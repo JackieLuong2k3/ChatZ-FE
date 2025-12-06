@@ -52,8 +52,18 @@ export default function LoginPage() {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
 
-      // Redirect to home
-      router.push('/home');
+      // Kiểm tra preferences - nếu chưa có thì redirect đến update-preferences
+      const user = data.user;
+      const hasPreferences = user?.settings?.matchPreferences && 
+                           user.settings.matchPreferences.genders;
+      
+      if (!hasPreferences) {
+        // User login lần đầu hoặc chưa có preferences
+        router.push('/update-preferences');
+      } else {
+        // Redirect to home
+        router.push('/home');
+      }
     } catch (err: any) {
       setError(err.message || 'Đăng nhập thất bại');
       console.error('Login error:', err);
