@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import axios from 'axios';
 
 interface MatchPreferences {
   ageRange?: {
@@ -81,13 +82,8 @@ export default function UpdatePreferencesPage() {
   useEffect(() => {
     const loadProvinces = async () => {
       try {
-        const res = await fetch('https://provinces.open-api.vn/api/v1/');
-        if (res.ok) {
-          const data: Province[] = await res.json();
-          setProvinces(data);
-        } else {
-          console.error('Failed to load provinces');
-        }
+        const res = await axios.get<Province[]>('https://provinces.open-api.vn/api/v1/');
+        setProvinces(res.data);
       } catch (err) {
         console.error('Error loading provinces:', err);
       } finally {
@@ -109,24 +105,21 @@ export default function UpdatePreferencesPage() {
         }
 
         // Load existing preferences
-        const res = await fetch(`${API_URL}/api/users/preferences`, {
-          method: 'GET',
+        const res = await axios.get(`${API_URL}/api/users/preferences`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
         });
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.data) {
-            setPreferences({
-              genders: data.data.genders || 'male',
-              ageRange: data.data.ageRange || { min: 18, max: 50 },
-              locales: data.data.locales || [],
-              interests: data.data.interests || [],
-            });
-          }
+        const data = res.data;
+        if (data.success && data.data) {
+          setPreferences({
+            genders: data.data.genders || 'male',
+            ageRange: data.data.ageRange || { min: 18, max: 50 },
+            locales: data.data.locales || [],
+            interests: data.data.interests || [],
+          });
         }
       } catch (err) {
         console.error('Error loading preferences:', err);
@@ -168,20 +161,18 @@ export default function UpdatePreferencesPage() {
         }
       }
 
-      const res = await fetch(`${API_URL}/api/users/update-preferences`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ preferences }),
-      });
+      const res = await axios.post(
+        `${API_URL}/api/users/update-preferences`,
+        { preferences },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || data.error || 'Cập nhật thất bại');
-      }
+      const data = res.data;
 
       setSuccess(true);
       
@@ -190,7 +181,8 @@ export default function UpdatePreferencesPage() {
         router.push('/home');
       }, 1000);
     } catch (err: any) {
-      setError(err.message || 'Có lỗi xảy ra khi cập nhật preferences');
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Có lỗi xảy ra khi cập nhật preferences';
+      setError(errorMessage);
       console.error('Update preferences error:', err);
     } finally {
       setLoading(false);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import axios from 'axios';
 
 declare global {
   interface Window {
@@ -24,8 +25,8 @@ export default function LoginPage() {
   const router = useRouter();
   const buttonRef = useRef<HTMLDivElement>(null);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-  const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+  const API_URL = process.env.NEXT_PUBLIC_API_URL ;
+  const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
   const handleGoogleLogin = async (response: any) => {
     try {
@@ -34,38 +35,30 @@ export default function LoginPage() {
 
       const idToken = response.credential;
 
-      const res = await fetch(`${API_URL}/api/auth/google`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ idToken }),
+      const res = await axios.post(`${API_URL}/api/auth/google`, {
+        idToken,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Login failed');
-      }
+      const data = res.data;
 
       // Store token
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
 
-      // Kiểm tra preferences - nếu chưa có thì redirect đến update-preferences
+      // Kiểm tra preferences - nếu chưa có thì redirect đến setup-preferences
       const user = data.user;
-      const hasPreferences = user?.settings?.matchPreferences && 
-                           user.settings.matchPreferences.genders;
+      const hasPreferences = user?.settings?.matchPreferences?.genders;
       
       if (!hasPreferences) {
         // User login lần đầu hoặc chưa có preferences
-        router.push('/update-preferences');
+        router.push('/setup-preferences');
       } else {
-        // Redirect to home
+        // User đã có preferences, redirect to home
         router.push('/home');
       }
     } catch (err: any) {
-      setError(err.message || 'Đăng nhập thất bại');
+      const errorMessage = err.response?.data?.error || err.message || 'Đăng nhập thất bại';
+      setError(errorMessage);
       console.error('Login error:', err);
     } finally {
       setLoading(false);
@@ -73,7 +66,12 @@ export default function LoginPage() {
   };
 
   useEffect(() => {
-    // Load Google Sign-In script
+    // Check if Google script is already loaded
+    if (typeof window !== 'undefined' && window.google) {
+      setScriptLoaded(true);
+    }
+
+    // Load Google Sign-In script if not already loaded
     if (typeof window !== 'undefined' && !window.google && !scriptLoaded) {
       const script = document.createElement('script');
       script.src = 'https://accounts.google.com/gsi/client';
@@ -84,21 +82,33 @@ export default function LoginPage() {
       };
       document.head.appendChild(script);
     }
+  });
+
+  // Separate effect for rendering button
+  useEffect(() => {
+    // Clear button container first
+    if (buttonRef.current) {
+      buttonRef.current.innerHTML = '';
+    }
 
     // Initialize and render button when script is loaded
     if (scriptLoaded && window.google && buttonRef.current && GOOGLE_CLIENT_ID) {
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleLogin,
-      });
+      try {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: handleGoogleLogin,
+        });
 
-      window.google.accounts.id.renderButton(buttonRef.current, {
-        theme: 'outline',
-        size: 'large',
-        width: '100%',
-        text: 'signin_with',
-        locale: 'vi',
-      });
+        window.google.accounts.id.renderButton(buttonRef.current, {
+          theme: 'outline',
+          size: 'large',
+          width: '100%',
+          text: 'signin_with',
+          locale: 'vi',
+        });
+      } catch (error) {
+        console.error('Error rendering Google button:', error);
+      }
     }
   }, [scriptLoaded, GOOGLE_CLIENT_ID]);
 
