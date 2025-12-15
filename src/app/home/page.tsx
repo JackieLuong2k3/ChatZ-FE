@@ -35,6 +35,15 @@ const HomePage = () => {
           <h1 className="text-4xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6">
             Start Chatting
           </h1>
+          <p className="text-xl text-gray-600 dark:text-gray-400 mb-8">
+            Tìm người bạn phù hợp để trò chuyện
+          </p>
+          <button
+            onClick={() => router.push('/match')}
+            className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white text-lg font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+          >
+            Start Matching
+          </button>
         </div>
       </main>
     </div>
