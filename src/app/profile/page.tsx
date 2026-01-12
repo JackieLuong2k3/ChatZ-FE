@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Header from "@/components/Header";
 import axios from 'axios';
 import ReactModal from 'react-modal';
+import Image from 'next/image';
 
 interface UserProfile {
   _id: string;
@@ -17,6 +18,15 @@ interface UserProfile {
   bio?: string;
   locale?: string;
   lastActiveAt?: string;
+}
+
+interface Province {
+  name: string;
+  code: number;
+  division_type: string;
+  codename: string;
+  phone_code: number;
+  districts: unknown[];
 }
 
 export default function ProfilePage() {
@@ -41,7 +51,7 @@ export default function ProfilePage() {
     locale: '',
   });
 
-  const [provinces, setProvinces] = useState<any[]>([]);
+  const [provinces, setProvinces] = useState<Province[]>([]);
   const [searchProvince, setSearchProvince] = useState('');
   const [showProvinceDropdown, setShowProvinceDropdown] = useState(false);
   const provinceDropdownRef = useRef<HTMLDivElement>(null);
@@ -101,8 +111,9 @@ export default function ProfilePage() {
         } else {
           setError(data.message || 'Không thể tải profile');
         }
-      } catch (err: any) {
-        const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Có lỗi xảy ra';
+      } catch (err) {
+        const error = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+        const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Có lỗi xảy ra';
         setError(errorMessage);
         console.error('Error loading profile:', err);
       } finally {
@@ -264,8 +275,9 @@ export default function ProfilePage() {
       } else {
         setEditError(data.message || 'Không thể cập nhật profile');
       }
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Có lỗi xảy ra';
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Có lỗi xảy ra';
       setEditError(errorMessage);
       console.error('Error updating profile:', err);
     } finally {
@@ -297,7 +309,7 @@ export default function ProfilePage() {
     setShowProvinceDropdown(false);
   };
 
-  const filteredProvinces = provinces.filter((province: any) =>
+  const filteredProvinces = provinces.filter((province) =>
     province.name.toLowerCase().includes(searchProvince.toLowerCase())
   );
 
@@ -414,10 +426,13 @@ export default function ProfilePage() {
             {/* Avatar and Basic Info */}
             <div className="flex flex-col items-center mb-8 -mt-16">
               {profile.avatar ? (
-                <img
+                <Image
                   src={profile.avatar}
                   alt={profile.username}
+                  width={128}
+                  height={128}
                   className="w-32 h-32 rounded-full object-cover border-4 border-white dark:border-gray-800 shadow-lg"
+                  unoptimized
                 />
               ) : (
                 <div className="w-32 h-32 rounded-full bg-indigo-500 flex items-center justify-center text-white text-4xl font-bold border-4 border-white dark:border-gray-800 shadow-lg">
@@ -639,13 +654,16 @@ export default function ProfilePage() {
                 />
                 {editFormData.avatar && (
                   <div className="mt-2">
-                    <img
+                    <Image
                       src={editFormData.avatar}
                       alt="Avatar preview"
+                      width={80}
+                      height={80}
                       className="w-20 h-20 rounded-full object-cover border-2 border-gray-300 dark:border-gray-600"
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = 'none';
                       }}
+                      unoptimized
                     />
                   </div>
                 )}
@@ -711,7 +729,7 @@ export default function ProfilePage() {
                 {showProvinceDropdown && searchProvince && (
                   <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     {filteredProvinces.length > 0 ? (
-                      filteredProvinces.slice(0, 10).map((province: any) => (
+                      filteredProvinces.slice(0, 10).map((province) => (
                         <button
                           key={province.code}
                           type="button"

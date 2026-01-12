@@ -3,6 +3,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import Image from 'next/image';
+
+interface District {
+  name: string;
+  code: number;
+  division_type: string;
+  codename: string;
+  phone_code: number;
+  [key: string]: unknown;
+}
 
 interface Province {
   name: string;
@@ -10,7 +20,7 @@ interface Province {
   division_type: string;
   codename: string;
   phone_code: number;
-  districts: any[];
+  districts: District[];
 }
 
 export default function SetupProfilePage() {
@@ -219,8 +229,9 @@ export default function SetupProfilePage() {
       } else {
         setError(data.message || 'Không thể cập nhật profile');
       }
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Có lỗi xảy ra';
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Có lỗi xảy ra';
       setError(errorMessage);
       console.error('Error updating profile:', err);
     } finally {
@@ -316,10 +327,13 @@ export default function SetupProfilePage() {
               />
               {formData.avatar && (
                 <div className="mt-2">
-                  <img
+                  <Image
                     src={formData.avatar}
                     alt="Avatar preview"
+                    width={80}
+                    height={80}
                     className="w-20 h-20 rounded-full object-cover border-2 border-gray-300 dark:border-gray-600"
+                    unoptimized
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.display = 'none';
                     }}

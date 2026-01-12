@@ -5,6 +5,16 @@ import { useRouter } from 'next/navigation';
 import Header from "@/components/Header";
 import axios from 'axios';
 
+interface MatchPreferences {
+  ageRange?: {
+    min: number;
+    max: number;
+  };
+  genders: 'male' | 'female' | 'other';
+  locales?: string[];
+  interests?: string[];
+}
+
 interface QueueStatus {
   status: 'idle' | 'queued' | 'matched';
   queue?: {
@@ -34,7 +44,7 @@ export default function MatchPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [waitingTime, setWaitingTime] = useState(0); // Thời gian đã đợi (giây)
   const [remainingTime, setRemainingTime] = useState<number | null>(null); // Thời gian còn lại (giây)
-  const [preferences, setPreferences] = useState<any>(null); // User preferences
+  const [preferences, setPreferences] = useState<MatchPreferences | null>(null); // User preferences
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
   useEffect(() => {
@@ -68,7 +78,7 @@ export default function MatchPage() {
       if (data.success && data.data) {
         setPreferences(data.data);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error loading preferences:', err);
       // Nếu không có preferences, set về null
       setPreferences(null);
@@ -107,7 +117,7 @@ export default function MatchPage() {
         clearInterval(intervalId);
       }
     };
-  }, [queueStatus?.status, queueStatus?.queue?.createdAt, queueStatus?.queue?.expiresAt]);
+  }, [queueStatus?.status, queueStatus?.queue?.createdAt, queueStatus?.queue?.expiresAt, queueStatus?.queue]);
 
   // Poll queue status khi đang tìm match
   useEffect(() => {
@@ -198,11 +208,12 @@ export default function MatchPage() {
         setQueueStatus({ status: 'idle' });
         setIsSearching(false);
       }
-    } catch (err: any) {
+    } catch (err) {
+      const error = err as { response?: { status?: number }; message?: string };
       // Không hiển thị lỗi nếu chỉ là không có trong queue
-      if (err.response?.status !== 404 && err.response?.status !== 200) {
+      if (error.response?.status !== 404 && error.response?.status !== 200) {
         console.error('Error loading queue status:', err);
-      } else if (err.response?.status === 200) {
+      } else if (error.response?.status === 200) {
         // Response 200 nhưng không có data = không có trong queue
         console.log('ℹ️  Queue không tồn tại (có thể đã match hoặc hết hạn)');
         setQueueStatus({ status: 'idle' });
@@ -278,14 +289,15 @@ export default function MatchPage() {
         setError(data.message || 'Không thể tham gia hàng đợi');
         setIsSearching(false);
       }
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Có lỗi xảy ra';
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string; error?: string }; status?: number }; message?: string };
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Có lỗi xảy ra';
       setError(errorMessage);
       setIsSearching(false);
       console.error('Error joining queue:', err);
       
       // Nếu lỗi là thiếu preferences, redirect đến setup
-      if (err.response?.status === 400 && errorMessage.includes('preferences')) {
+      if (error.response?.status === 400 && errorMessage.includes('preferences')) {
         setTimeout(() => {
           router.push('/setup-preferences');
         }, 2000);
@@ -329,10 +341,11 @@ export default function MatchPage() {
         }
         // Nếu chưa match (data.data.success = false), không làm gì cả, để polling tiếp tục
       }
-    } catch (err: any) {
+    } catch (err) {
+      const error = err as { response?: { status?: number; data?: { message?: string } }; message?: string };
       // Xử lý lỗi 404 một cách graceful (queue đã bị xóa sau khi match)
-      if (err.response?.status === 404) {
-        const errorMessage = err.response?.data?.message || '';
+      if (error.response?.status === 404) {
+        const errorMessage = error.response?.data?.message || '';
         if (errorMessage.includes('Not in queue') || errorMessage.includes('không có trong hàng đợi')) {
           // Queue đã bị xóa (có thể đã match thành công hoặc hết hạn)
           // Kiểm tra lại status để xem có room không
@@ -368,8 +381,9 @@ export default function MatchPage() {
         status: 'idle',
       });
       setIsSearching(false);
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Có lỗi xảy ra';
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Có lỗi xảy ra';
       setError(errorMessage);
       console.error('Error leaving queue:', err);
     } finally {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from "@/components/Header";
 
@@ -14,8 +14,9 @@ const HomePage = () => {
           router.push('/login');
           return;
         }
-      } catch (err: any) {
-        const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Có lỗi xảy ra khi kiểm tra preferences';
+      } catch (err) {
+        const error = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+        const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Có lỗi xảy ra khi kiểm tra preferences';
         console.error('Error checking preferences:', errorMessage);
         router.push('/login');
       }

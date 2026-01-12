@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import axios from 'axios';
 import ReactModal from 'react-modal';
 
@@ -71,14 +72,7 @@ export default function Header() {
   }, []);
 
 
-  // Load preferences when settings modal opens
-  useEffect(() => {
-    if (isSettingsOpen) {
-      loadPreferences();
-    }
-  }, [isSettingsOpen]);
-
-  const loadPreferences = async () => {
+  const loadPreferences = useCallback(async () => {
     try {
       setLoadingPreferences(true);
       setError('');
@@ -102,13 +96,20 @@ export default function Header() {
           interests: [],
         });
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error loading preferences:', err);
       setError('Không thể tải preferences');
     } finally {
       setLoadingPreferences(false);
     }
-  };
+  }, [API_URL]);
+
+  // Load preferences when settings modal opens
+  useEffect(() => {
+    if (isSettingsOpen) {
+      loadPreferences();
+    }
+  }, [isSettingsOpen, loadPreferences]);
 
   const handleSavePreferences = async () => {
     try {
@@ -145,8 +146,9 @@ export default function Header() {
           setSuccess('');
         }, 1500);
       }
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Có lỗi xảy ra';
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Có lỗi xảy ra';
       setError(errorMessage);
     } finally {
       setSaving(false);
@@ -192,10 +194,13 @@ export default function Header() {
                   className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 >
                   {user.avatar ? (
-                    <img
+                    <Image
                       src={user.avatar}
                       alt={user.username}
+                      width={32}
+                      height={32}
                       className="w-8 h-8 rounded-full object-cover"
+                      unoptimized
                     />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold">

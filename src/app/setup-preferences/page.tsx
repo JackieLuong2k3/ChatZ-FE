@@ -14,13 +14,22 @@ interface MatchPreferences {
   interests?: string[];
 }
 
+interface District {
+  name: string;
+  code: number;
+  division_type: string;
+  codename: string;
+  phone_code: number;
+  [key: string]: unknown;
+}
+
 interface Province {
   name: string;
   code: number;
   division_type: string;
   codename: string;
   phone_code: number;
-  districts: any[];
+  districts: District[];
 }
 
 export default function UpdatePreferencesPage() {
@@ -42,17 +51,12 @@ export default function UpdatePreferencesPage() {
     interests: [],
   });
 
-  const [showOtherLocale, setShowOtherLocale] = useState(false);
-  const [otherLocaleValue, setOtherLocaleValue] = useState('');
   const [showOtherInterest, setShowOtherInterest] = useState(false);
   const [otherInterestValue, setOtherInterestValue] = useState('');
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [loadingProvinces, setLoadingProvinces] = useState(true);
   const [searchProvince, setSearchProvince] = useState('');
   const [showProvinceDropdown, setShowProvinceDropdown] = useState(false);
-
-  // Danh sách provinces (sẽ load từ API)
-  const availableLocales = provinces.map(p => p.name);
 
   // Danh sách interests có sẵn
   const availableInterests = [
@@ -129,7 +133,7 @@ export default function UpdatePreferencesPage() {
     };
 
     checkAuthAndLoadPreferences();
-  }, [router]);
+  }, [router, API_URL]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -161,7 +165,7 @@ export default function UpdatePreferencesPage() {
         }
       }
 
-      const res = await axios.post(
+      await axios.post(
         `${API_URL}/api/users/update-preferences`,
         { preferences },
         {
@@ -172,16 +176,15 @@ export default function UpdatePreferencesPage() {
         }
       );
 
-      const data = res.data;
-
       setSuccess(true);
       
       // Redirect to home after 1 second
       setTimeout(() => {
         router.push('/home');
       }, 1000);
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Có lỗi xảy ra khi cập nhật preferences';
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Có lỗi xảy ra khi cập nhật preferences';
       setError(errorMessage);
       console.error('Update preferences error:', err);
     } finally {

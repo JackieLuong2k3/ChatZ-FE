@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Header from "@/components/Header";
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
+import Image from 'next/image';
 
 interface MatchedUser {
   _id: string;
@@ -22,9 +23,16 @@ interface Room {
   createdAt?: string;
 }
 
+interface SenderInfo {
+  _id: string;
+  username?: string;
+  avatar?: string;
+  [key: string]: unknown;
+}
+
 interface Message {
   _id: string;
-  senderId: string | { _id: string; [key: string]: any };
+  senderId: string | SenderInfo;
   content: string;
   type?: string;
   createdAt: string;
@@ -138,7 +146,6 @@ export default function RoomPage() {
       }
       socket.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?._id, API_URL]);
 
   // Load room data from queue status or URL params
@@ -174,8 +181,9 @@ export default function RoomPage() {
       } else {
         await loadRoomInfo(roomIdFromUrl);
       }
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Có lỗi xảy ra';
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Có lỗi xảy ra';
       setError(errorMessage);
       console.error('Error loading room data:', err);
     } finally {
@@ -207,7 +215,7 @@ export default function RoomPage() {
         }
       }
       return null;
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error loading queue status:', err);
       return null;
     }
@@ -236,9 +244,9 @@ export default function RoomPage() {
         // Load messages
         await loadMessages(roomId);
       }
-    } catch (err: any) {
+    } catch (err) {
       // If API doesn't exist or room not found, try to get from queue status
-      console.log('Room API not available, using queue status');
+      console.log('Room API not available, using queue status:', err);
       const queueStatus = await loadQueueStatus();
       if (queueStatus?.room?._id === roomId) {
         setRoom(queueStatus.room);
@@ -265,9 +273,9 @@ export default function RoomPage() {
       if (data.success && data.data) {
         setMessages(data.data.messages || data.data || []);
       }
-    } catch (err: any) {
+    } catch (err) {
       // If messages API doesn't exist, just set empty array
-      console.log('Messages API not available');
+      console.log('Messages API not available:', err);
       setMessages([]);
     }
   };
@@ -325,8 +333,9 @@ export default function RoomPage() {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 100);
       }
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Không thể gửi tin nhắn';
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Không thể gửi tin nhắn';
       setError(errorMessage);
       console.error('Error sending message:', err);
       // Restore message if failed
@@ -445,9 +454,10 @@ export default function RoomPage() {
           },
         });
         console.log('✅ Đã rời khỏi queue');
-      } catch (queueErr: any) {
+      } catch (queueErr) {
         // Nếu không có trong queue hoặc lỗi, vẫn tiếp tục
-        console.log('Queue leave error (may not be in queue):', queueErr.response?.data?.message || queueErr.message);
+        const error = queueErr as { response?: { data?: { message?: string } }; message?: string };
+        console.log('Queue leave error (may not be in queue):', error.response?.data?.message || error.message);
       }
 
       // Leave room via Socket.IO if connected
@@ -532,10 +542,13 @@ export default function RoomPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               {matchedUser.avatar ? (
-                <img
+                <Image
                   src={matchedUser.avatar}
                   alt={matchedUser.username}
+                  width={64}
+                  height={64}
                   className="w-16 h-16 rounded-full object-cover border-4 border-indigo-500"
+                  unoptimized
                 />
               ) : (
                 <div className="w-16 h-16 rounded-full bg-indigo-500 flex items-center justify-center text-white text-2xl font-bold">
@@ -670,7 +683,7 @@ export default function RoomPage() {
               messages.map((msg) => {
                 const senderIdStr = typeof msg.senderId === 'string' 
                   ? msg.senderId 
-                  : (msg.senderId as any)?._id;
+                  : (msg.senderId as SenderInfo)?._id;
                 const isMyMessage = senderIdStr === currentUserId;
                 
                 return (
@@ -775,10 +788,13 @@ export default function RoomPage() {
               {/* Avatar */}
               <div className="flex justify-center mb-6">
                 {matchedUser.avatar ? (
-                  <img
+                  <Image
                     src={matchedUser.avatar}
                     alt={matchedUser.username}
+                    width={128}
+                    height={128}
                     className="w-32 h-32 rounded-full object-cover border-4 border-indigo-500"
+                    unoptimized
                   />
                 ) : (
                   <div className="w-32 h-32 rounded-full bg-indigo-500 flex items-center justify-center text-white text-4xl font-bold">
