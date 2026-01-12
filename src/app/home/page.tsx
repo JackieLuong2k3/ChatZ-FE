@@ -3,13 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from "@/components/Header";
-import axios from 'axios';
 
 const HomePage = () => {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-
   useEffect(() => {
     const checkPreferences = async () => {
       try {

@@ -4,14 +4,32 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
+interface GoogleConfig {
+  client_id: string;
+  callback: (response: GoogleCredentialResponse) => void;
+}
+
+interface GoogleButtonConfig {
+  theme?: 'outline' | 'filled_blue' | 'filled_black';
+  size?: 'large' | 'medium' | 'small';
+  width?: string | number;
+  text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
+  locale?: string;
+}
+
+interface GoogleCredentialResponse {
+  credential: string;
+  select_by?: string;
+}
+
 declare global {
   interface Window {
     google?: {
       accounts: {
         id: {
-          initialize: (config: any) => void;
+          initialize: (config: GoogleConfig) => void;
           prompt: () => void;
-          renderButton: (element: HTMLElement, config: any) => void;
+          renderButton: (element: HTMLElement, config: GoogleButtonConfig) => void;
         };
       };
     };
@@ -28,7 +46,7 @@ export default function LoginPage() {
   const API_URL = process.env.NEXT_PUBLIC_API_URL ;
   const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
-  const handleGoogleLogin = async (response: any) => {
+  const handleGoogleLogin = async (response: GoogleCredentialResponse) => {
     try {
       setLoading(true);
       setError('');
@@ -64,8 +82,10 @@ export default function LoginPage() {
           router.push('/home');
         }
       }
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.error || err.message || 'Đăng nhập thất bại';
+    } catch (err) {
+      const errorMessage = (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error || 
+                          (err as { message?: string })?.message || 
+                          'Đăng nhập thất bại';
       setError(errorMessage);
       console.error('Login error:', err);
     } finally {
@@ -77,6 +97,7 @@ export default function LoginPage() {
     // Check if Google script is already loaded
     if (typeof window !== 'undefined' && window.google) {
       setScriptLoaded(true);
+      return;
     }
 
     // Load Google Sign-In script if not already loaded
@@ -90,7 +111,8 @@ export default function LoginPage() {
       };
       document.head.appendChild(script);
     }
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Separate effect for rendering button
   useEffect(() => {
@@ -118,6 +140,7 @@ export default function LoginPage() {
         console.error('Error rendering Google button:', error);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scriptLoaded, GOOGLE_CLIENT_ID]);
 
   return (
