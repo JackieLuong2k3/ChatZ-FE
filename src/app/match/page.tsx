@@ -113,10 +113,14 @@ export default function MatchPage() {
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null;
 
+    // Chỉ polling khi đang searching và status là 'queued'
     if (isSearching && queueStatus?.status === 'queued') {
       intervalId = setInterval(() => {
         loadQueueStatus();
-        tryMatch();
+        // Chỉ gọi tryMatch nếu vẫn còn trong queue
+        if (queueStatus?.status === 'queued') {
+          tryMatch();
+        }
       }, 5000); // Check mỗi 5 giây (giảm từ 3 giây)
     }
 
@@ -126,7 +130,20 @@ export default function MatchPage() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSearching]); // Chỉ phụ thuộc vào isSearching, không phụ thuộc vào queueStatus để tránh loop
+  }, [isSearching, queueStatus?.status]); // Thêm queueStatus?.status vào dependencies
+
+  // Tự động chuyển đến room khi đã match
+  useEffect(() => {
+    if (queueStatus?.status === 'matched' && queueStatus.room?._id) {
+      const roomId = queueStatus.room._id;
+      const timer = setTimeout(() => {
+        router.push(`/room?roomId=${roomId}`);
+      }, 2000); // Delay 2 giây để user thấy thông báo match thành công
+      
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueStatus?.status, queueStatus?.room?._id]);
 
   const loadQueueStatus = async () => {
     try {
@@ -167,6 +184,7 @@ export default function MatchPage() {
         });
 
         // Nếu đã match, dừng polling
+        // useEffect sẽ tự động chuyển đến room
         if (newStatus === 'matched') {
           setIsSearching(false);
         } else if (newStatus === 'queued' && !isSearching) {
@@ -174,7 +192,9 @@ export default function MatchPage() {
           setIsSearching(true);
         }
       } else if (data.success && !data.data) {
-        // Không có trong queue
+        // Không có trong queue - có thể đã match thành công hoặc hết hạn
+        // Kiểm tra xem có room nào không (có thể đã match trước đó)
+        console.log('ℹ️  Không có trong queue, kiểm tra rooms...');
         setQueueStatus({ status: 'idle' });
         setIsSearching(false);
       }
@@ -184,6 +204,7 @@ export default function MatchPage() {
         console.error('Error loading queue status:', err);
       } else if (err.response?.status === 200) {
         // Response 200 nhưng không có data = không có trong queue
+        console.log('ℹ️  Queue không tồn tại (có thể đã match hoặc hết hạn)');
         setQueueStatus({ status: 'idle' });
         setIsSearching(false);
       }
@@ -276,6 +297,11 @@ export default function MatchPage() {
 
   const tryMatch = async () => {
     try {
+      // Kiểm tra status trước khi gọi API
+      if (queueStatus?.status !== 'queued') {
+        return; // Không gọi API nếu không còn trong queue
+      }
+
       const token = localStorage.getItem('token');
       if (!token) return;
 
@@ -299,11 +325,24 @@ export default function MatchPage() {
             room: data.data.room,
           });
           setIsSearching(false);
+          // useEffect sẽ tự động chuyển đến room
         }
         // Nếu chưa match (data.data.success = false), không làm gì cả, để polling tiếp tục
       }
     } catch (err: any) {
-      // Không hiển thị lỗi, chỉ log
+      // Xử lý lỗi 404 một cách graceful (queue đã bị xóa sau khi match)
+      if (err.response?.status === 404) {
+        const errorMessage = err.response?.data?.message || '';
+        if (errorMessage.includes('Not in queue') || errorMessage.includes('không có trong hàng đợi')) {
+          // Queue đã bị xóa (có thể đã match thành công hoặc hết hạn)
+          // Kiểm tra lại status để xem có room không
+          console.log('ℹ️  Queue không còn tồn tại, kiểm tra lại status...');
+          setIsSearching(false); // Dừng polling ngay lập tức
+          await loadQueueStatus();
+          return; // Không hiển thị lỗi
+        }
+      }
+      // Các lỗi khác chỉ log, không hiển thị
       console.error('Error trying match:', err);
     }
   };
@@ -338,11 +377,6 @@ export default function MatchPage() {
     }
   };
 
-  const handleStartChat = () => {
-    if (queueStatus?.room?._id) {
-      router.push(`/chat/${queueStatus.room._id}`);
-    }
-  };
 
   // Format thời gian đợi
   const formatTime = (seconds: number): string => {
@@ -518,72 +552,6 @@ export default function MatchPage() {
               >
                 {loading ? 'Đang xử lý...' : 'Hủy tìm kiếm'}
               </button>
-            </div>
-          )}
-
-          {/* Status: Matched - Đã tìm thấy match */}
-          {queueStatus?.status === 'matched' && queueStatus.matchedUser && (
-            <div className="text-center">
-              <div className="mb-6">
-                <div className="inline-flex items-center justify-center w-24 h-24 bg-green-100 dark:bg-green-900 rounded-full mb-4">
-                  <svg
-                    className="w-12 h-12 text-green-600 dark:text-green-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
-                  Đã tìm thấy match! 🎉
-                </h2>
-                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6 mb-6">
-                  <div className="flex items-center justify-center mb-4">
-                    {queueStatus.matchedUser.avatar ? (
-                      <img
-                        src={queueStatus.matchedUser.avatar}
-                        alt={queueStatus.matchedUser.username}
-                        className="w-20 h-20 rounded-full object-cover border-4 border-indigo-500"
-                      />
-                    ) : (
-                      <div className="w-20 h-20 rounded-full bg-indigo-500 flex items-center justify-center text-white text-2xl font-bold">
-                        {queueStatus.matchedUser.username?.charAt(0).toUpperCase() || 'U'}
-                      </div>
-                    )}
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                    {queueStatus.matchedUser.username}
-                  </h3>
-                  {queueStatus.matchedUser.age && (
-                    <p className="text-gray-600 dark:text-gray-400">
-                      {queueStatus.matchedUser.age} tuổi
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="flex gap-4 justify-center">
-                <button
-                  onClick={handleStartChat}
-                  className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white text-lg font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                >
-                  Bắt đầu trò chuyện
-                </button>
-                <button
-                  onClick={() => {
-                    setQueueStatus({ status: 'idle' });
-                    setIsSearching(false);
-                  }}
-                  className="px-6 py-4 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-medium"
-                >
-                  Tìm lại
-                </button>
-              </div>
             </div>
           )}
         </div>
