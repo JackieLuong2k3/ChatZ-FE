@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Header from "@/components/Header";
 import axios from 'axios';
+import { io, Socket } from 'socket.io-client';
 
 interface MatchedUser {
   _id: string;
@@ -51,6 +52,7 @@ export default function RoomPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const profileModalRef = useRef<HTMLDivElement>(null);
+  const socketRef = useRef<Socket | null>(null);
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
   useEffect(() => {
@@ -77,6 +79,67 @@ export default function RoomPage() {
     loadRoomData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Socket.IO connection
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || !room?._id) return;
+
+    // Connect to Socket.IO server
+    const socket = io(API_URL, {
+      auth: {
+        token: token
+      },
+      transports: ['websocket', 'polling']
+    });
+
+    socketRef.current = socket;
+
+    // Connection events
+    socket.on('connect', () => {
+      console.log('✅ Connected to Socket.IO server');
+      // Join room when connected
+      socket.emit('join_room', room._id);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('❌ Disconnected from Socket.IO server');
+    });
+
+    socket.on('error', (error) => {
+      console.error('Socket.IO error:', error);
+      setError(error.message || 'Socket.IO connection error');
+    });
+
+    socket.on('joined_room', (data) => {
+      console.log('✅ Joined room:', data.roomId);
+    });
+
+    // Listen for new messages
+    socket.on('new_message', (message) => {
+      console.log('📨 New message received:', message);
+      setMessages((prev) => {
+        // Check if message already exists
+        const exists = prev.some(msg => msg._id === message._id);
+        if (exists) return prev;
+        return [...prev, message];
+      });
+      
+      // Scroll to bottom
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      if (socket && room?._id) {
+        socket.emit('leave_room', room._id);
+      }
+      socket.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room?._id, API_URL]);
 
   // Load room data from queue status or URL params
   const loadRoomData = async () => {
@@ -215,10 +278,25 @@ export default function RoomPage() {
     
     if (!message.trim() || !room?._id) return;
 
+    const messageContent = message.trim();
+    setMessage(''); // Clear input immediately for better UX
+
     try {
       setSending(true);
       setError('');
 
+      // Try to send via Socket.IO first
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit('send_message', {
+          roomId: room._id,
+          content: messageContent,
+          type: 'text'
+        });
+        setSending(false);
+        return;
+      }
+
+      // Fallback to REST API if Socket.IO is not connected
       const token = localStorage.getItem('token');
       if (!token) {
         router.push('/login');
@@ -228,7 +306,7 @@ export default function RoomPage() {
       const res = await axios.post(
         `${API_URL}/api/chat/rooms/${room._id}/messages`,
         {
-          content: message.trim(),
+          content: messageContent,
           type: 'text',
         },
         {
@@ -242,7 +320,6 @@ export default function RoomPage() {
       const data = res.data;
       if (data.success && data.data) {
         setMessages((prev) => [...prev, data.data]);
-        setMessage('');
         // Scroll to bottom
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -252,6 +329,8 @@ export default function RoomPage() {
       const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Không thể gửi tin nhắn';
       setError(errorMessage);
       console.error('Error sending message:', err);
+      // Restore message if failed
+      setMessage(messageContent);
     } finally {
       setSending(false);
     }
@@ -358,7 +437,26 @@ export default function RoomPage() {
         return;
       }
 
-      // TODO: Implement leave room API call
+      // Leave queue first
+      try {
+        await axios.delete(`${API_URL}/api/queue/leave`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        console.log('✅ Đã rời khỏi queue');
+      } catch (queueErr: any) {
+        // Nếu không có trong queue hoặc lỗi, vẫn tiếp tục
+        console.log('Queue leave error (may not be in queue):', queueErr.response?.data?.message || queueErr.message);
+      }
+
+      // Leave room via Socket.IO if connected
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit('leave_room', room._id);
+        socketRef.current.disconnect();
+      }
+
+      // TODO: Implement leave room API call if needed
       // await axios.post(`${API_URL}/api/rooms/${room._id}/leave`, {}, {
       //   headers: { 'Authorization': `Bearer ${token}` }
       // });
