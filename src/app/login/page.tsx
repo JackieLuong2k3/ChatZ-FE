@@ -45,16 +45,24 @@ export default function LoginPage() {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
 
-      // Kiểm tra preferences - nếu chưa có thì redirect đến setup-preferences
+      // Kiểm tra profile đã setup chưa (username, gender, age)
       const user = data.user;
-      const hasPreferences = user?.settings?.matchPreferences?.genders;
+      const hasProfile = user?.username && user?.gender && user?.age;
       
-      if (!hasPreferences) {
-        // User login lần đầu hoặc chưa có preferences
-        router.push('/setup-preferences');
+      if (!hasProfile) {
+        // User chưa setup profile, redirect đến setup-profile
+        router.push('/setup-profile');
       } else {
-        // User đã có preferences, redirect to home
-        router.push('/home');
+        // Kiểm tra preferences - nếu chưa có thì redirect đến setup-preferences
+        const hasPreferences = user?.settings?.matchPreferences?.genders;
+        
+        if (!hasPreferences) {
+          // User chưa có preferences
+          router.push('/setup-preferences');
+        } else {
+          // User đã có cả profile và preferences, redirect to home
+          router.push('/home');
+        }
       }
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || err.message || 'Đăng nhập thất bại';
