@@ -43,13 +43,17 @@ export default function LoginPage() {
   const router = useRouter();
   const buttonRef = useRef<HTMLDivElement>(null);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL ;
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
   const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
   const handleGoogleLogin = async (response: GoogleCredentialResponse) => {
     try {
       setLoading(true);
       setError('');
+
+      if (!API_URL) {
+        throw new Error('API URL chưa được cấu hình. Vui lòng kiểm tra biến môi trường NEXT_PUBLIC_API_URL.');
+      }
 
       const idToken = response.credential;
 
