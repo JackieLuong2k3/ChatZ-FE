@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Header from "@/components/Header";
 import axios from 'axios';
 import ReactModal from 'react-modal';
@@ -31,7 +31,6 @@ interface Province {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState('');
@@ -88,9 +87,7 @@ export default function ProfilePage() {
         }
 
         // Nếu không có userId từ localStorage, thử lấy từ URL params (fallback)
-        if (!userId) {
-          userId = searchParams?.get('userId') || null;
-        }
+        
 
         if (!userId) {
           setError('Không tìm thấy userId. Vui lòng đăng nhập lại.');
