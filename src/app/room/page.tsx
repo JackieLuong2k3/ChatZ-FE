@@ -57,6 +57,7 @@ function RoomPageContent() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [partnerLeft, setPartnerLeft] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const profileModalRef = useRef<HTMLDivElement>(null);
@@ -137,6 +138,13 @@ function RoomPageContent() {
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
+    });
+
+    // Listen for partner leaving
+    socket.on('partner_left', (data) => {
+      console.log('👋 Partner left:', data);
+      setPartnerLeft(true);
+      setError('Đối phương đã rời khỏi cuộc trò chuyện');
     });
 
     // Cleanup on unmount
@@ -241,6 +249,8 @@ function RoomPageContent() {
         if (data.data.matchedUser) {
           setMatchedUser(data.data.matchedUser);
         }
+        // Reset partner left state when loading new room
+        setPartnerLeft(false);
         // Load messages
         await loadMessages(roomId);
       }
@@ -253,6 +263,8 @@ function RoomPageContent() {
         if (queueStatus.matchedUser) {
           setMatchedUser(queueStatus.matchedUser);
         }
+        // Reset partner left state when loading new room
+        setPartnerLeft(false);
       }
     }
   };
@@ -714,8 +726,30 @@ function RoomPageContent() {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Partner Left Message */}
+          {partnerLeft && (
+            <div className="mx-6 mb-4 p-4 bg-yellow-100 dark:bg-yellow-900 border border-yellow-400 text-yellow-800 dark:text-yellow-200 rounded-lg text-center">
+              <div className="flex items-center justify-center space-x-2">
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+                <p className="font-semibold">Đối phương đã rời khỏi cuộc trò chuyện</p>
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
-          {error && (
+          {error && !partnerLeft && (
             <div className="mx-6 mb-4 p-3 bg-red-100 dark:bg-red-900 border border-red-400 text-red-700 dark:text-red-300 rounded-lg text-sm">
               {error}
             </div>
@@ -728,13 +762,13 @@ function RoomPageContent() {
                 type="text"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Nhập tin nhắn..."
-                className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                disabled={sending}
+                placeholder={partnerLeft ? "Đối phương đã rời khỏi cuộc trò chuyện" : "Nhập tin nhắn..."}
+                className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={sending || partnerLeft}
               />
               <button
                 type="submit"
-                disabled={sending || !message.trim()}
+                disabled={sending || !message.trim() || partnerLeft}
                 className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none transform hover:scale-105"
               >
                 {sending ? (
