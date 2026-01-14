@@ -30,12 +30,18 @@ interface SenderInfo {
   [key: string]: unknown;
 }
 
+interface ReadBy {
+  userId: string;
+  readAt: string;
+}
+
 interface Message {
   _id: string;
   senderId: string | SenderInfo;
   content: string;
   type?: string;
   createdAt: string;
+  readBy?: ReadBy[];
 }
 
 interface QueueStatus {
@@ -94,15 +100,17 @@ function RoomPageContent() {
     const token = localStorage.getItem('token');
     if (!token || !room?._id) return;
 
-    // Connect to Socket.IO server
-    const socket = io(API_URL, {
-      auth: {
-        token: token
-      },
-      transports: ['websocket', 'polling']
-    });
-
-    socketRef.current = socket;
+    // Reuse existing socket if already connected, otherwise create new one
+    let socket = socketRef.current;
+    if (!socket || !socket.connected) {
+      socket = io(API_URL, {
+        auth: {
+          token: token
+        },
+        transports: ['websocket', 'polling']
+      });
+      socketRef.current = socket;
+    }
 
     // Connection events
     socket.on('connect', () => {
@@ -110,6 +118,11 @@ function RoomPageContent() {
       // Join room when connected
       socket.emit('join_room', room._id);
     });
+
+    // If already connected, join room immediately
+    if (socket.connected) {
+      socket.emit('join_room', room._id);
+    }
 
     socket.on('disconnect', () => {
       console.log('❌ Disconnected from Socket.IO server');
@@ -131,7 +144,11 @@ function RoomPageContent() {
         // Check if message already exists
         const exists = prev.some(msg => msg._id === message._id);
         if (exists) return prev;
-        return [...prev, message];
+        // Ensure readBy is included
+        return [...prev, {
+          ...message,
+          readBy: message.readBy || []
+        }];
       });
       
       // Scroll to bottom
@@ -147,12 +164,45 @@ function RoomPageContent() {
       setError('Đối phương đã rời khỏi cuộc trò chuyện');
     });
 
-    // Cleanup on unmount
+    // Listen for messages read
+    socket.on('messages_read', (data) => {
+      console.log('✅ Messages read:', data);
+      setMessages((prev) => {
+        return prev.map((msg) => {
+          if (data.messageIds.includes(msg._id)) {
+            // Check if already read by this user
+            const alreadyRead = msg.readBy?.some(
+              (read) => read.userId === data.readBy
+            );
+            if (!alreadyRead) {
+              return {
+                ...msg,
+                readBy: [
+                  ...(msg.readBy || []),
+                  {
+                    userId: data.readBy,
+                    readAt: data.readAt
+                  }
+                ]
+              };
+            }
+          }
+          return msg;
+        });
+      });
+    });
+
+    // Don't cleanup on unmount - keep connection when navigating away
+    // Socket will only disconnect when user explicitly leaves room or closes browser
     return () => {
-      if (socket && room?._id) {
-        socket.emit('leave_room', room._id);
-      }
-      socket.disconnect();
+      // Only remove event listeners, don't disconnect socket
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('error');
+      socket.off('joined_room');
+      socket.off('new_message');
+      socket.off('partner_left');
+      socket.off('messages_read');
     };
   }, [room?._id, API_URL]);
 
@@ -361,6 +411,40 @@ function RoomPageContent() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Mark messages as read when viewing
+  useEffect(() => {
+    if (!room?._id || !currentUserId || !socketRef.current?.connected || partnerLeft) return;
+
+    // Mark messages as read when messages are loaded or updated
+    const markAsRead = () => {
+      const unreadMessages = messages.filter((msg) => {
+        const senderIdStr = typeof msg.senderId === 'string' 
+          ? msg.senderId 
+          : (msg.senderId as SenderInfo)?._id;
+        const isMyMessage = senderIdStr === currentUserId;
+        
+        // Only mark messages from other users as read
+        if (isMyMessage) return false;
+        
+        // Check if already read by current user
+        const alreadyRead = msg.readBy?.some(
+          (read) => read.userId === currentUserId
+        );
+        return !alreadyRead;
+      });
+
+      if (unreadMessages.length > 0 && socketRef.current?.connected) {
+        socketRef.current.emit('mark_messages_read', {
+          roomId: room._id
+        });
+      }
+    };
+
+    // Debounce to avoid too many requests
+    const timeoutId = setTimeout(markAsRead, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [messages, room?._id, currentUserId, partnerLeft]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -692,16 +776,35 @@ function RoomPageContent() {
                 </p>
               </div>
             ) : (
-              messages.map((msg) => {
+              (() => {
+                const lastReadMyMessageId =
+                  [...messages]
+                    .reverse()
+                    .find((m) => {
+                      const senderIdStr = typeof m.senderId === 'string'
+                        ? m.senderId
+                        : (m.senderId as SenderInfo)?._id;
+                      const isMyMsg = senderIdStr === currentUserId;
+                      if (!isMyMsg || !matchedUser) return false;
+                      return (m.readBy || []).some((read) => read.userId === matchedUser._id);
+                    })?._id || null;
+
+                return messages.map((msg) => {
                 const senderIdStr = typeof msg.senderId === 'string' 
                   ? msg.senderId 
                   : (msg.senderId as SenderInfo)?._id;
                 const isMyMessage = senderIdStr === currentUserId;
                 
+                // Check if message is read by partner (for my messages)
+                const isReadByPartner = isMyMessage && matchedUser && msg.readBy?.some(
+                  (read) => read.userId === matchedUser._id
+                );
+                const showReadReceipt = Boolean(isMyMessage && isReadByPartner && lastReadMyMessageId && msg._id === lastReadMyMessageId);
+                
                 return (
                   <div
                     key={msg._id}
-                    className={`flex ${isMyMessage ? 'justify-end' : 'justify-start'}`}
+                    className={`flex flex-col ${isMyMessage ? 'items-end' : 'items-start'}`}
                   >
                     <div
                       className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
@@ -711,17 +814,40 @@ function RoomPageContent() {
                       }`}
                     >
                       <p className="text-sm">{msg.content}</p>
-                      <p
-                        className={`text-xs mt-1 ${
-                          isMyMessage ? 'text-indigo-200' : 'text-gray-500 dark:text-gray-400'
-                        }`}
-                      >
-                        {formatTime(msg.createdAt)}
-                      </p>
+                      <div className="flex items-center justify-end mt-1">
+                        <p
+                          className={`text-xs ${
+                            isMyMessage ? 'text-indigo-200' : 'text-gray-500 dark:text-gray-400'
+                          }`}
+                        >
+                          {formatTime(msg.createdAt)}
+                        </p>
+                      </div>
                     </div>
+                    {/* Read receipt - Avatar below message */}
+                    {showReadReceipt && matchedUser && (
+                      <div className="flex items-center gap-1 mt-1 px-1">
+                        {matchedUser.avatar ? (
+                          <Image
+                            src={matchedUser.avatar}
+                            alt={matchedUser.username}
+                            width={16}
+                            height={16}
+                            className="w-4 h-4 rounded-full object-cover border border-indigo-300"
+                            unoptimized
+                          />
+                        ) : (
+                          <div className="w-4 h-4 rounded-full bg-indigo-300 flex items-center justify-center text-white text-[10px] font-bold border border-indigo-300">
+                            {matchedUser.username?.charAt(0).toUpperCase() || 'U'}
+                          </div>
+                        )}
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Đã xem</span>
+                      </div>
+                    )}
                   </div>
                 );
-              })
+              });
+              })()
             )}
             <div ref={messagesEndRef} />
           </div>
